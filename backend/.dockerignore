@@ -1,0 +1,13 @@
+target/
+*.log
+*.tmp
+.git/
+.gitignore
+.mvn/wrapper/
+README.md
+*.md
+**/*.class
+**/__pycache__/
+.vscode/
+.idea/
+*.iml

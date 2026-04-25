@@ -1,0 +1,96 @@
+---
+# ─────────────────────────────────────────────────────────────
+# PersistentVolumeClaim — HuggingFace model cache
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-model-cache-pvc
+  namespace: hms
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi    # BART-large-cnn is ~1.6 GB; give room for other models
+
+---
+# ─────────────────────────────────────────────────────────────
+# Deployment — FastAPI AI Service
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: hms
+  labels:
+    app: ai-service
+    tier: ai
+spec:
+  replicas: 1    # Scale carefully — model loading is memory-heavy
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+        tier: ai
+    spec:
+      containers:
+        - name: ai-service
+          image: your-dockerhub/hms-ai:latest   # ← replace with your image
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: hms-config
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /app/.cache/huggingface
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 90    # Model loading takes time
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"    # Transformers models are memory-hungry
+      volumes:
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: hf-model-cache-pvc
+
+---
+# ─────────────────────────────────────────────────────────────
+# Service — AI Microservice (ClusterIP, internal only)
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: hms
+  labels:
+    app: ai-service
+spec:
+  selector:
+    app: ai-service
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

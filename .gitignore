@@ -1,0 +1,37 @@
+# ── Secrets — NEVER commit these ─────────────────────────────
+.env
+*.pem
+*.key
+*.p12
+*.jks
+
+# ── Build artifacts ───────────────────────────────────────────
+backend/target/
+frontend/build/
+frontend/node_modules/
+ai-microservice/.venv/
+ai-microservice/__pycache__/
+**/*.pyc
+**/*.class
+
+# ── IDEs ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Docker volumes (local dev) ────────────────────────────────
+mysql-data/
+hf-cache/
+
+# ── Miscellaneous ─────────────────────────────────────────────
+env/
+ai-microservice/env/
+node_modules/

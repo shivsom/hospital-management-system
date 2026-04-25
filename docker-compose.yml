@@ -1,0 +1,159 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+# Hospital Management System - Docker Compose
+# ─────────────────────────────────────────────────────────────
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "5"
+    tag: "{{.Name}}"
+
+networks:
+  hms-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  hf-model-cache:
+
+services:
+
+  # ── MySQL Database ────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: hms-db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE:      ${MYSQL_DATABASE}
+      MYSQL_USER:          ${MYSQL_USER}
+      MYSQL_PASSWORD:      ${MYSQL_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    networks:
+      - hms-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+    # Do NOT expose port 3306 externally in production
+    # ports:
+    #   - "3306:3306"
+
+  # ── Spring Boot Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hms-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL:      ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      JWT_SECRET:                 ${JWT_SECRET}
+      JWT_EXPIRATION:             ${JWT_EXPIRATION}
+      CORS_ALLOWED_ORIGINS:       ${CORS_ALLOWED_ORIGINS}
+      AI_SERVICE_URL:             ${AI_SERVICE_URL}
+      SPRING_PROFILES_ACTIVE:     ${SPRING_PROFILES_ACTIVE:-prod}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hms-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/api/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+    # Port is NOT exposed externally - nginx handles routing
+    expose:
+      - "8081"
+
+  # ── AI Microservice ───────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-microservice
+      dockerfile: Dockerfile
+    container_name: hms-ai
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HF_HOME:          ${HF_HOME:-/app/.cache/huggingface}
+      AI_CORS_ORIGINS:  ${AI_CORS_ORIGINS:-http://localhost}
+    volumes:
+      - hf-model-cache:/app/.cache/huggingface
+    networks:
+      - hms-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
+    logging: *default-logging
+    expose:
+      - "8000"
+
+  # ── React Frontend ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hms-frontend
+    restart: unless-stopped
+    networks:
+      - hms-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+    expose:
+      - "80"
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: hms-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # Uncomment for HTTPS (add SSL certs via volume)
+      # - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    networks:
+      - hms-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/nginx-health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging

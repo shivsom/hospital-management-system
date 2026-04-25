@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+*.md
+.env
+*.log
+.DS_Store
+.vscode/
+.idea/
+.cache/
+*.egg-info/
+dist/
+build/

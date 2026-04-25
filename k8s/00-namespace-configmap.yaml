@@ -1,0 +1,26 @@
+---
+# ─────────────────────────────────────────────────────────────
+# Namespace
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hms
+  labels:
+    app.kubernetes.io/part-of: hospital-management-system
+
+---
+# ─────────────────────────────────────────────────────────────
+# ConfigMap — non-secret runtime config
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hms-config
+  namespace: hms
+data:
+  SPRING_DATASOURCE_URL: "jdbc:mysql://db-service:3306/hms?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+  SPRING_PROFILES_ACTIVE: "prod"
+  AI_SERVICE_URL: "http://ai-service:8000"
+  CORS_ALLOWED_ORIGINS: "http://nginx-service"
+  HF_HOME: "/app/.cache/huggingface"

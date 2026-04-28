@@ -35,3 +35,4 @@ hf-cache/
 env/
 ai-microservice/env/
 node_modules/
+.ssh/

@@ -1,193 +1,28 @@
-# Hospital Management System (DevOps Project)
-  
-A full-stack **microservices-based hospital management system** built with modern DevOps practices including containerization, CI/CD, reverse proxy, and Kubernetes deployment.
+name: CI Pipeline
 
----
-## Features
+on:
+  push:
+    branches: [ main ]
+  pull_request:
 
-- Microservices architecture (Frontend, Backend, AI, Database)
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
 
-- Dockerized services with Docker Compose
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-- Nginx reverse proxy for routing
+      - name: Build containers
+        run: docker-compose build
 
-- Health checks & service dependency management
+      - name: Start containers
+        run: docker-compose up -d
 
-- CI/CD pipeline using GitHub Actions
+      - name: Wait for backend
+        run: |
+          sleep 15
+          curl http://localhost:8080 || exit 1
 
-- Kubernetes manifests for scalable deployment
-
-- Secure configuration using environment variables
-
----
-## Tech Stack
-
-- **Frontend:** React 18
-
-- **Backend:** Spring Boot (Java 21)
-
-- **Database:** MySQL
-
-- **AI Service:** FastAPI + HuggingFace
-
-- **DevOps:** Docker, Docker Compose, Nginx, GitHub Actions, Kubernetes
-- 
----
-## Architecture  
-
-```
-
-  
-
-User → Nginx → Frontend → Backend → Database
-
-↓
-
-AI Service
-
-  
-
-````
-
----
-
-## Run Locally (Docker)
-
-```bash
-
-git clone https://github.com/YOUR_USERNAME/hospital-management-system.git
-
-cd hospital-management-system
-
-  
-
-cp .env.example .env
-
-# Add required values (MYSQL_PASSWORD, JWT_SECRET)
-
-  
-
-docker compose up -d --build
-
-````
-
----
-## Access Application
-
-Main App:
---> [http://localhost](http://localhost)  
-
-> All traffic is routed through **Nginx reverse proxy**
-
----
-## Service Routing
-
-| Route    | Service    |
-
-| -------- | ---------- |
-
-| `/`      | Frontend   |
-
-| `/api/*` | Backend    |
-
-| `/ai/*`  | AI Service |
-
-
----
-## CI/CD Pipeline
-
-* GitHub Actions workflow
-
-* Builds Docker images automatically
-
-* Pushes images to Docker Hub
-
-* (Optional) Deploys to VPS
-
----
-## Kubernetes Support
-
-Kubernetes manifests available in `/k8s` directory for:
-
-* Deployments
-
-* Services
-
-* Ingress
-
----
-## Security Highlights
-
-* No hardcoded credentials
-
-* Environment-based configuration
-
-* Restricted service exposure (internal networking)
-
-* Reverse proxy for controlled access
-
----
-## Health Checks
-
-  
-
-| Service  | Endpoint               |
-
-| -------- | ---------------------- |
-
-| Backend  | `/api/actuator/health` |
-
-| AI       | `/ai/health`           |
-
-| Frontend | `/healthz`             |
-
-
----
-
-## Project Structure
-
-```
-
-backend/
-
-frontend/
-
-ai-microservice/
-
-nginx/
-
-database/
-
-k8s/
-
-docker-compose.yml
-
-```
-
-
----
-## Key Learnings
-
-* Debugged Docker healthcheck issues
-
-* Managed multi-container networking
-
-* Optimized builds and image sizes
-
-* Implemented CI/CD automation
-
-* Handled large file issues in Git
-
----
-
-  
-
-## Author
-**Soham Patil**
-**Purvjit Patil**
-
----
-  
-## If you like this project
-
-Give it a ⭐ on GitHub!
+      - name: Stop containers
+        run: docker-compose down

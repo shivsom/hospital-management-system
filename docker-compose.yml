@@ -20,6 +20,7 @@ volumes:
   hf-model-cache:
 
 services:
+  
 
   # ── MySQL Database ────────────────────────────────────────────
   db:
@@ -48,9 +49,11 @@ services:
     # Do NOT expose port 3306 externally in production
     # ports:
     #   - "3306:3306"
+    # the port no. is written here for future reference and to allow internal communication between containers, but it is not exposed to the host machine
 
   # ── Spring Boot Backend ───────────────────────────────────────
   backend:
+    image: soham02patil/hms-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -84,6 +87,7 @@ services:
 
   # ── AI Microservice ───────────────────────────────────────────
   ai-service:
+    image: soham02patil/hms-ai:latest
     build:
       context: ./ai-microservice
       dockerfile: Dockerfile
@@ -109,6 +113,7 @@ services:
 
   # ── React Frontend ────────────────────────────────────────────
   frontend:
+    image: soham02patil/hms-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile

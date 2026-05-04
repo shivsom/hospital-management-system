@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: your-dockerhub/hms-backend:latest   # ← replace with your image
+          image: soham02patil/hms-backend:latest   # ← replace with your image
           imagePullPolicy: Always
           ports:
             - containerPort: 8081

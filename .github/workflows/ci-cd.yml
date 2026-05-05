@@ -1,8 +1,8 @@
-name: CI Pipeline
+name: HMS CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
@@ -10,7 +10,7 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
 
-    steps: # Fixed: This must be indented under the job name
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -19,22 +19,121 @@ jobs:
 
       - name: Verify Docker Environment
         run: |
-          docker version
+          docker --version
           docker compose version
+
+      #  KEY FIX: Write .env from GitHub Secrets
+      - name: Create .env file from GitHub Secrets
+        run: |
+          cat > .env << EOF
+          MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER=${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
+          SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRATION=${{ secrets.JWT_EXPIRATION }}
+          CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+          AI_SERVICE_URL=${{ secrets.AI_SERVICE_URL }}
+          AI_CORS_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+          EOF
+
+      - name: Verify .env was created (safe — values are masked in logs)
+        run: |
+          echo ".env file exists: $(test -f .env && echo YES || echo NO)"
+          echo "Variables set: $(grep -c '=' .env) / 12"
 
       - name: Build and Start containers
         run: docker compose up -d --build
 
       - name: Wait for backend
         run: |
-          echo "Waiting for backend to be ready..."
-          # This loop is more robust than a static sleep
-          timeout 60s bash -c 'until curl --fail http://localhost:8080; do sleep 5; done'
+          echo "Waiting for backend to be healthy..."
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost/api/actuator/health > /dev/null 2>&1; then
+              echo "Backend is healthy!"
+              break
+            fi
+            echo "Attempt $i/24 — waiting 10s..."
+            sleep 10
+          done
 
       - name: Debug containers
-        if: always() # Runs even if the previous step fails
-        run: docker ps
-
-      - name: Stop containers
         if: always()
-        run: docker compose down
+        run: |
+          docker compose ps
+          docker compose logs --tail=50
+
+  #  Build and Push Docker images (main branch only) 
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: build-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/hms-backend:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/hms-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/hms-frontend:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/hms-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push AI service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ai-microservice
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/hms-ai:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/hms-ai:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  #  Deploy to VPS (main branch only) 
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/hms
+            git pull origin main
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            echo "Deploy complete at $(date)"

@@ -1,4 +1,4 @@
-# 🏥 Hospital Management System — DevOps Guide
+# Hospital Management System — DevOps Guide
 
 ## Final Project Structure
 
